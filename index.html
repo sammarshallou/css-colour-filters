@@ -238,13 +238,21 @@ function getColor(values) {
  * @return {number} Score (lower is better)
  */
 function score(target, values) {
+// Wonder if it makes a difference to use RGB here.
+
+    const result = getColor(values);
+    const score = Math.pow(result.r - target.r, 2) +
+      Math.pow(result.g - target.g, 2) +
+      Math.pow(result.b - target.b, 2);
+
+/*
     const result = getColor(values);
     const resultHsl = result.hsl();
     const targetHsl = target.hsl();
     const score = Math.pow(resultHsl.h - targetHsl.h, 2) +
       Math.pow(resultHsl.s - targetHsl.s, 2) +
       Math.pow(resultHsl.l - targetHsl.l, 2);
-
+*/
     return score;
 }
 
@@ -297,7 +305,7 @@ function iterate(target, values, amount) {
 function optimise(target, values) {
   const maxHops = 100;
 
-  let amount = 0.2;
+  let amount = 0.1;
   let count = 100;
   while (true) {
     let lastScore;
@@ -325,6 +333,19 @@ function optimise(target, values) {
     }
   }
   
+  return values;  
+}
+
+function updateDisplay(values) {
+  const filter = 'invert(' + invertAmount + ') sepia(1) hue-rotate(' + values.rotate + 'deg) brightness(' + values.brightness + ') saturate(' + values.saturate + ')';
+  document.getElementById('patch2').style.filter = filter;
+  document.getElementById('filter').innerHTML = 'filter: ' + filter;
+  document.getElementById('filtered').innerHTML = getColor(values).toHex();
+
+}
+
+function reducePrecision(values) {
+  const startingHex = getColor(values).toHex();
   // Make the values less precise if we can do that and still get the right number.
   for (var precision = 5; precision >2; precision--) {
     const approxValues = {
@@ -332,31 +353,17 @@ function optimise(target, values) {
       brightness: Number(values.brightness.toPrecision(precision)),
       saturate: Number(values.saturate.toPrecision(precision))
     };
-    if (getColor(approxValues).toHex() === target.toHex()) {
+    if (getColor(approxValues).toHex() === startingHex) {
       values = approxValues;
     } else {
       break;
     }
   }
-  
-  
-  const filter = 'invert(' + invertAmount + ') sepia(1) hue-rotate(' + values.rotate + 'deg) brightness(' + values.brightness + ') saturate(' + values.saturate + ')';
-  document.getElementById('patch2').style.filter = filter;
-  document.getElementById('filter').innerHTML = 'filter: ' + filter;
-  document.getElementById('filtered').innerHTML = getColor(values).toHex();
+  return values;
 }
 
-/**
- * Runs when user clicks button.
- */
-function go() {
-  const target = new Color(...hexToRgb(document.getElementById('rgb').value));
-
-  document.getElementById('patch1').style.backgroundColor = target.toHex();
-  document.getElementById('original').innerHTML = target.toHex();
-
+function getInitialValuesHBS(target) {
   const targetHsl = target.hsl();
-  console.log(targetHsl);
 
   const color = new Color(0, 0, 0);
   color.invert(invertAmount);
@@ -376,8 +383,61 @@ function go() {
   const saturate = (targetHsl.s / afterBrightness.s);
   color.saturate(saturate);    
 
-  const values = { rotate, brightness, saturate };
-  optimise(target, values);
+  return { rotate, brightness, saturate };
+}
+
+function getInitialValuesSBH(target) {
+  const targetHsl = target.hsl();
+
+  const color = new Color(0, 0, 0);
+  color.invert(invertAmount);
+  color.sepia(1);
+
+  // Calculate approximate initial values from first principles. This should get us into
+  // the right general area, then we can optimise automatically.
+  
+  const saturate = (targetHsl.s / color.hsl().s);
+  color.saturate(saturate);    
+  const afterSaturate = color.hsl();
+
+  const brightness = (targetHsl.l / afterSaturate.l);
+  color.brightness(brightness);
+  const afterBrightness = color.hsl();
+
+  const rotate = (targetHsl.h - afterBrightness.h) * 3.6; // The hsl function returns 0-100 not 0-360
+  color.hueRotate(rotate);
+  const afterRotate = color.hsl();   
+
+  return { rotate, brightness, saturate };
+}
+
+/**
+ * Runs when user clicks button.
+ */
+function go() {
+  const target = new Color(...hexToRgb(document.getElementById('rgb').value));
+
+  document.getElementById('patch1').style.backgroundColor = target.toHex();
+  document.getElementById('original').innerHTML = target.toHex();
+
+  const values1 = getInitialValuesHBS(target);
+  const result1 = optimise(target, values1);
+
+  const values2 = getInitialValuesSBH(target);
+  const result2 = optimise(target, values2);
+  
+  let result;
+  if (score(target, result1) < score(target, result2)) {
+    console.log('Using HBS');
+    result = result1;
+  } else {
+    console.log('Using SBH');
+    result = result2;
+  }
+  
+  // Make the values less precise if we can do that and still get the right number.
+  const finalValues = reducePrecision(result);
+  updateDisplay(finalValues);  
 }
 
 </script>
@@ -398,7 +458,7 @@ Hex colour:
 <div>Filtered colour <span id="filtered"></span></div>
 <div id="filter"></div>
 
-<p>Note that these filters are exactly correct in Chrome but not Firefox. I think this may be because Firefox sepia filter has an error in calculation, but I am not sure yet.</p>
+<p>Note that these filters are slightly off in Firefox. I think this may be because Firefox sepia filter has an error in calculation, but I am not sure yet.</p>
 
 </body>
 </html>
