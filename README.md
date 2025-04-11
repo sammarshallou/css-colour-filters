@@ -2,5 +2,6 @@ I took the colour code from an [existing solution](https://github.com/angel-rs/c
 
 With the existing one I didn't like the way you had to rerun it to get the right answer. This one gives you the right answer straight away.
 
-No doubt there are other things wrong with it :)
+[Use the generator on GitHub pages](https://sammarshallou.github.io/css-colour-filters)
 
+No doubt there are other things wrong with it :)
