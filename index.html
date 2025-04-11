@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Colour filters</title>
+<script>
+// FOLLOWING CODE TAKEN FROM https://github.com/angel-rs/css-color-filter-generator
+///////////////////////////////////////////////////////////////////////////////////
+
+// Expand shorthand form (e.g. "03F") to full form (e.g. "0033FF")
+function expandHex(hextexp) {
+  const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+  hextexp = hextexp.replace(shorthandRegex, (m, r, g, b) => {
+    return r + r + g + g + b + b;
+  });
+  return hextexp;
+}
+
+function rgbToHex(r, g, b) {
+  function componentToHex(c) {
+    var hex = c.toString(16);
+    return hex.length == 1 ? "0" + hex : hex;
+  }
+
+  return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
+}
+
+function hexToRgb(hex) {
+  const expandedHex = expandHex(hex);
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(expandedHex);
+  return result
+    ? [
+        parseInt(result[1], 16),
+        parseInt(result[2], 16),
+        parseInt(result[3], 16),
+      ]
+    : null;
+}
+
+function trimRgb(rgb) {
+  const [r, g, b] = rgb
+    .replace(/rgb\(|\) /i, "")
+    .split(",")
+    .map((x) => parseInt(x));
+  return [r, g, b];
+}
+
+class Color {
+  constructor(r, g, b) {
+    this.set(r, g, b);
+  }
+
+  toRgb() {
+    return `rgb(${Math.round(this.r)}, ${Math.round(this.g)}, ${Math.round(
+      this.b
+    )})`;
+  }
+
+  toHex() {
+    return rgbToHex(Math.round(this.r), Math.round(this.g), Math.round(this.b));
+  }
+
+  set(r, g, b) {
+    this.r = this.clamp(r);
+    this.g = this.clamp(g);
+    this.b = this.clamp(b);
+  }
+
+  hueRotate(angle = 0) {
+    angle = (angle / 180) * Math.PI;
+    const sin = Math.sin(angle);
+    const cos = Math.cos(angle);
+
+    this.multiply([
+      0.213 + cos * 0.787 - sin * 0.213,
+      0.715 - cos * 0.715 - sin * 0.715,
+      0.072 - cos * 0.072 + sin * 0.928,
+      0.213 - cos * 0.213 + sin * 0.143,
+      0.715 + cos * 0.285 + sin * 0.14,
+      0.072 - cos * 0.072 - sin * 0.283,
+      0.213 - cos * 0.213 - sin * 0.787,
+      0.715 - cos * 0.715 + sin * 0.715,
+      0.072 + cos * 0.928 + sin * 0.072,
+    ]);
+  }
+
+  grayscale(value = 1) {
+    this.multiply([
+      0.2126 + 0.7874 * (1 - value),
+      0.7152 - 0.7152 * (1 - value),
+      0.0722 - 0.0722 * (1 - value),
+      0.2126 - 0.2126 * (1 - value),
+      0.7152 + 0.2848 * (1 - value),
+      0.0722 - 0.0722 * (1 - value),
+      0.2126 - 0.2126 * (1 - value),
+      0.7152 - 0.7152 * (1 - value),
+      0.0722 + 0.9278 * (1 - value),
+    ]);
+  }
+
+  sepia(value = 1) {
+    this.multiply([
+      0.393 + 0.607 * (1 - value),
+      0.769 - 0.769 * (1 - value),
+      0.189 - 0.189 * (1 - value),
+      0.349 - 0.349 * (1 - value),
+      0.686 + 0.314 * (1 - value),
+      0.168 - 0.168 * (1 - value),
+      0.272 - 0.272 * (1 - value),
+      0.534 - 0.534 * (1 - value),
+      0.131 + 0.869 * (1 - value),
+    ]);
+  }
+
+  saturate(value = 1) {
+    this.multiply([
+      0.213 + 0.787 * value,
+      0.715 - 0.715 * value,
+      0.072 - 0.072 * value,
+      0.213 - 0.213 * value,
+      0.715 + 0.285 * value,
+      0.072 - 0.072 * value,
+      0.213 - 0.213 * value,
+      0.715 - 0.715 * value,
+      0.072 + 0.928 * value,
+    ]);
+  }
+
+  multiply(matrix) {
+    const newR = this.clamp(
+      this.r * matrix[0] + this.g * matrix[1] + this.b * matrix[2]
+    );
+    const newG = this.clamp(
+      this.r * matrix[3] + this.g * matrix[4] + this.b * matrix[5]
+    );
+    const newB = this.clamp(
+      this.r * matrix[6] + this.g * matrix[7] + this.b * matrix[8]
+    );
+    this.r = newR;
+    this.g = newG;
+    this.b = newB;
+  }
+
+  brightness(value = 1) {
+    this.linear(value);
+  }
+  contrast(value = 1) {
+    this.linear(value, -(0.5 * value) + 0.5);
+  }
+
+  linear(slope = 1, intercept = 0) {
+    this.r = this.clamp(this.r * slope + intercept * 255);
+    this.g = this.clamp(this.g * slope + intercept * 255);
+    this.b = this.clamp(this.b * slope + intercept * 255);
+  }
+
+  invert(value = 1) {
+    this.r = this.clamp((value + (this.r / 255) * (1 - 2 * value)) * 255);
+    this.g = this.clamp((value + (this.g / 255) * (1 - 2 * value)) * 255);
+    this.b = this.clamp((value + (this.b / 255) * (1 - 2 * value)) * 255);
+  }
+
+  hsl() {
+    // Code taken from https://stackoverflow.com/a/9493060/2688027, licensed under CC BY-SA.
+    const r = this.r / 255;
+    const g = this.g / 255;
+    const b = this.b / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h,
+      s,
+      l = (max + min) / 2;
+
+    if (max === min) {
+      h = s = 0;
+    } else {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r:
+          h = (g - b) / d + (g < b ? 6 : 0);
+          break;
+
+        case g:
+          h = (b - r) / d + 2;
+          break;
+
+        case b:
+          h = (r - g) / d + 4;
+          break;
+      }
+      h /= 6;
+    }
+
+    return {
+      h: h * 100,
+      s: s * 100,
+      l: l * 100,
+    };
+  }
+
+  clamp(value) {
+    if (value > 255) {
+      value = 255;
+    } else if (value < 0) {
+      value = 0;
+    }
+    return value;
+  }
+}
+
+// REMAINING CODE ACTUALLY MINE
+///////////////////////////////
+
+/** @constant {number} Amount chosen to give approx. 50% saturation after sepia */
+const invertAmount = 0.641849;
+
+/**
+ * By applying the 3 varying filter components, plus fixed ones, obtain a new Color object.
+ *
+ * @param {Object} values Filter values
+ * @return {Color} Color object
+ */
+function getColor(values) {
+   const result = new Color(0, 0, 0);
+    result.invert(invertAmount);
+    result.sepia(1);
+    result.hueRotate(values.rotate);
+    result.brightness(values.brightness);
+    result.saturate(values.saturate);    
+    return result;
+}
+
+/**
+ * Calculates difference between target colour and filter values in HSL space
+ *
+ * @param {Color} target Target color object
+ * @param {Object} values Filter values
+ * @return {number} Score (lower is better)
+ */
+function score(target, values) {
+    const result = getColor(values);
+    const resultHsl = result.hsl();
+    const targetHsl = target.hsl();
+    const score = Math.pow(resultHsl.h - targetHsl.h, 2) +
+      Math.pow(resultHsl.s - targetHsl.s, 2) +
+      Math.pow(resultHsl.l - targetHsl.l, 2);
+
+    return score;
+}
+
+/**
+ * Applies one iteration given starting values. This works by varying each filter value
+ * by the amount given in either direction (scaled *10 for hue). This is compared and
+ * whichever gives the best score is returned.
+ *
+ * @param {Color} target Target color object
+ * @param {Object} values Initial filter values
+ * @param {number} Amount to vary by
+ * @return {Object} Result including new values, score, and whether it was changed or not
+ */
+function iterate(target, values, amount) {
+  console.log('Iteration ' + amount);
+  let bestScore = 0, bestValues = null, bestOriginal = false;  
+  for (let hueAdjust of [-amount * 10, 0, amount * 10]) {
+    const newRotate = values.rotate + hueAdjust;
+    for (let brightnessAdjust of [-amount, 0, amount]) {
+      const newBrightness = values.brightness + brightnessAdjust;
+      for (let saturationAdjust of [-amount, 0, amount]) {
+        const newSaturate = values.saturate + saturationAdjust;
+        
+        const newValues = {
+          rotate: Number(newRotate.toPrecision(6)), 
+          brightness: Number(newBrightness.toPrecision(6)), 
+          saturate: Number(newSaturate.toPrecision(6))
+        };
+        const newScore = score(target, newValues);
+        
+        if (bestValues === null || newScore <bestScore) {
+          bestValues = newValues;
+          bestScore = newScore;
+          bestOriginal = (hueAdjust === 0 && brightnessAdjust === 0 && saturationAdjust === 0);
+        }      
+      }
+    }
+  }
+  
+  return {original: bestOriginal, values: bestValues, score: bestScore};
+}
+
+/**
+ * Optimises (local minima only) given a starting point. This works by iterating multiple times
+ * using smaller and smaller differences, until we get a colour that exactly matches the input.
+ *
+ * @param {Color} target Target color object
+ * @param {Object} values Initial filter values
+ */
+function optimise(target, values) {
+  const maxHops = 100;
+
+  let amount = 0.2;
+  let count = 100;
+  while (true) {
+    let lastScore;
+    for (let i =0; i < maxHops; i++) {
+      const change = iterate(target, values, amount);
+      values = change.values;
+      lastScore = change.score;
+      if (change.original) {
+        console.log('Found after ' + i + ' hops');
+        break;
+      } else if (i === maxHops - 1) {
+        console.log('Found after max hops');
+      }
+    }
+    amount *= 0.9;
+    
+    console.log(count + ': score ' + lastScore);
+    count--;
+    if (count == 0) {
+      break;
+    }
+    if(getColor(values).toHex() === target.toHex()) {
+      console.log('Found colour with ' + count + ' left, stopping');
+      break;
+    }
+  }
+  
+  // Make the values less precise if we can do that and still get the right number.
+  for (var precision = 5; precision >2; precision--) {
+    const approxValues = {
+      rotate: Number(values.rotate.toPrecision(precision)),
+      brightness: Number(values.brightness.toPrecision(precision)),
+      saturate: Number(values.saturate.toPrecision(precision))
+    };
+    if (getColor(approxValues).toHex() === target.toHex()) {
+      values = approxValues;
+    } else {
+      break;
+    }
+  }
+  
+  
+  const filter = 'invert(' + invertAmount + ') sepia(1) hue-rotate(' + values.rotate + 'deg) brightness(' + values.brightness + ') saturate(' + values.saturate + ')';
+  document.getElementById('patch2').style.filter = filter;
+  document.getElementById('filter').innerHTML = 'filter: ' + filter;
+  document.getElementById('filtered').innerHTML = getColor(values).toHex();
+}
+
+/**
+ * Runs when user clicks button.
+ */
+function go() {
+  const target = new Color(...hexToRgb(document.getElementById('rgb').value));
+
+  document.getElementById('patch1').style.backgroundColor = target.toHex();
+  document.getElementById('original').innerHTML = target.toHex();
+
+  const targetHsl = target.hsl();
+  console.log(targetHsl);
+
+  const color = new Color(0, 0, 0);
+  color.invert(invertAmount);
+  color.sepia(1);
+
+  // Calculate approximate initial values from first principles. This should get us into
+  // the right general area, then we can optimise automatically.
+  
+  const rotate = (targetHsl.h - color.hsl().h) * 3.6; // The hsl function returns 0-100 not 0-360
+  color.hueRotate(rotate);
+  const afterRotate = color.hsl();   
+  
+  const brightness = (targetHsl.l / afterRotate.l);
+  color.brightness(brightness);
+  const afterBrightness = color.hsl();
+  
+  const saturate = (targetHsl.s / afterBrightness.s);
+  color.saturate(saturate);    
+
+  const values = { rotate, brightness, saturate };
+  optimise(target, values);
+}
+
+</script>
+</head>
+<body>
+<h1>Convert colour to CSS filter</h1>
+<div>
+<label>
+Hex colour: 
+<input type="text" id="rgb" value="#1f55a5">
+</label>
+<button onclick="go()">Convert</button>
+</div>
+
+<div>Original colour <span id="original"></span></div>
+<div style="width:200px; height:50px; background-color: black;" id="patch1"></div>
+<div style="width:200px; height:50px; background-color: black;" id="patch2"></div>
+<div>Filtered colour <span id="filtered"></span></div>
+<div id="filter"></div>
+
+<p>Note that these filters are exactly correct in Chrome but not Firefox. I think this may be because Firefox sepia filter has an error in calculation, but I am not sure yet.</p>
+
+</body>
+</html>
