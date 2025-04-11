@@ -238,21 +238,10 @@ function getColor(values) {
  * @return {number} Score (lower is better)
  */
 function score(target, values) {
-// Wonder if it makes a difference to use RGB here.
-
     const result = getColor(values);
     const score = Math.pow(result.r - target.r, 2) +
       Math.pow(result.g - target.g, 2) +
       Math.pow(result.b - target.b, 2);
-
-/*
-    const result = getColor(values);
-    const resultHsl = result.hsl();
-    const targetHsl = target.hsl();
-    const score = Math.pow(resultHsl.h - targetHsl.h, 2) +
-      Math.pow(resultHsl.s - targetHsl.s, 2) +
-      Math.pow(resultHsl.l - targetHsl.l, 2);
-*/
     return score;
 }
 
@@ -272,9 +261,9 @@ function iterate(target, values, amount) {
   for (let hueAdjust of [-amount * 10, 0, amount * 10]) {
     const newRotate = values.rotate + hueAdjust;
     for (let brightnessAdjust of [-amount, 0, amount]) {
-      const newBrightness = values.brightness + brightnessAdjust;
+      const newBrightness = Math.max(0, values.brightness + brightnessAdjust);
       for (let saturationAdjust of [-amount, 0, amount]) {
-        const newSaturate = values.saturate + saturationAdjust;
+        const newSaturate = Math.max(0, values.saturate + saturationAdjust);
         
         const newValues = {
           rotate: Number(newRotate.toPrecision(6)), 
