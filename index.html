@@ -218,15 +218,31 @@ const invertAmount = 0.641849;
  * By applying the 3 varying filter components, plus fixed ones, obtain a new Color object.
  *
  * @param {Object} values Filter values
+ * @param {boolean} roundEveryStep If true, rounds every step
  * @return {Color} Color object
  */
-function getColor(values) {
-   const result = new Color(0, 0, 0);
+function getColor(values, roundEveryStep) {
+   let result = new Color(0, 0, 0);
     result.invert(values.invert ? values.invert : invertAmount);
+    if (roundEveryStep) {
+      result = new Color(...hexToRgb(result.toHex()));
+    }
     result.sepia(1);
+    if (roundEveryStep) {
+      result = new Color(...hexToRgb(result.toHex()));
+    }
     result.hueRotate(values.rotate);
+    if (roundEveryStep) {
+      result = new Color(...hexToRgb(result.toHex()));
+    }
     result.brightness(values.brightness);
+    if (roundEveryStep) {
+      result = new Color(...hexToRgb(result.toHex()));
+    }
     result.saturate(values.saturate);    
+    if (roundEveryStep) {
+      result = new Color(...hexToRgb(result.toHex()));
+    }
     return result;
 }
 
@@ -235,14 +251,16 @@ function getColor(values) {
  *
  * @param {Color} target Target color object
  * @param {Object} values Filter values
+ * @param {boolean} roundEveryStep If true, rounds every step when calculating colours
  * @return {number} Score (lower is better)
  */
-function score(target, values) {
-    const result = getColor(values);
-    const score = Math.pow(result.r - target.r, 2) +
-      Math.pow(result.g - target.g, 2) +
-      Math.pow(result.b - target.b, 2);
-    return score;
+function score(target, values, roundEveryStep) {
+  const result = getColor(values, roundEveryStep);
+  const score = 
+    Math.pow(result.r - target.r, 2) +
+    Math.pow(result.g - target.g, 2) +
+    Math.pow(result.b - target.b, 2);
+  return score;
 }
 
 /**
@@ -253,16 +271,17 @@ function score(target, values) {
  * @param {Color} target Target color object
  * @param {Object} values Initial filter values
  * @param {number} Amount to vary by
+ * @param {boolean} roundEveryStep If true, rounds every step when calculating colours
  * @return {Object} Result including new values, score, and whether it was changed or not
  */
-function iterate(target, values, amount) {
+function iterate(target, values, amount, roundEveryStep) {
   console.log('Iteration ' + amount);
   let bestScore = 0, bestValues = null, bestOriginal = false;  
-  for (let hueAdjust of [-amount * 10, 0, amount * 10]) {
+  for (let hueAdjust of [0, -amount * 10, amount * 10]) {
     const newRotate = values.rotate + hueAdjust;
-    for (let brightnessAdjust of [-amount, 0, amount]) {
+    for (let brightnessAdjust of [0, -amount, amount]) {
       const newBrightness = Math.max(0, values.brightness + brightnessAdjust);
-      for (let saturationAdjust of [-amount, 0, amount]) {
+      for (let saturationAdjust of [0, -amount, amount]) {
         const newSaturate = Math.max(0, values.saturate + saturationAdjust);
         
         const newValues = {
@@ -270,7 +289,7 @@ function iterate(target, values, amount) {
           brightness: Number(newBrightness.toPrecision(6)), 
           saturate: Number(newSaturate.toPrecision(6))
         };
-        const newScore = score(target, newValues);
+        const newScore = score(target, newValues, roundEveryStep);
         
         if (bestValues === null || newScore <bestScore) {
           bestValues = newValues;
@@ -290,8 +309,9 @@ function iterate(target, values, amount) {
  *
  * @param {Color} target Target color object
  * @param {Object} values Initial filter values
+ * @param {boolean} roundEveryStep If true, rounds every step when calculating colours
  */
-function optimise(target, values) {
+function optimise(target, values, roundEveryStep) {
   const maxHops = 100;
 
   let amount = 0.1;
@@ -299,7 +319,7 @@ function optimise(target, values) {
   while (true) {
     let lastScore;
     for (let i =0; i < maxHops; i++) {
-      const change = iterate(target, values, amount);
+      const change = iterate(target, values, amount, roundEveryStep);
       values = change.values;
       lastScore = change.score;
       if (change.original) {
@@ -309,14 +329,14 @@ function optimise(target, values) {
         console.log('Found after max hops');
       }
     }
-    amount *= 0.9;
+    amount *= 0.95;
     
     console.log(count + ': score ' + lastScore);
     count--;
     if (count == 0) {
       break;
     }
-    if(getColor(values).toHex() === target.toHex()) {
+    if(getColor(values, roundEveryStep).toHex() === target.toHex()) {
       console.log('Found colour with ' + count + ' left, stopping');
       break;
     }
@@ -331,12 +351,12 @@ function updateDisplay(values) {
   document.getElementById('patch2').style.filter = filter;
   document.getElementById('filter').innerHTML = 'filter: ' + filter;
   document.getElementById('filterfromany').innerHTML = 'filter: brightness(0) ' + filter;
-  document.getElementById('filtered').innerHTML = getColor(values).toHex();
+  document.getElementById('filtered').innerHTML = getColor(values).toHex() + ' (Chrome) / ' + getColor(values, true).toHex() + ' (Firefox)';
 
 }
 
-function reducePrecision(values) {
-  const startingHex = getColor(values).toHex();
+function reducePrecision(values, roundEveryStep) {
+  const startingHex = getColor(values, roundEveryStep).toHex();
   let resultValues = {invert: invertAmount, ...values};
   
   for (let field of ['invert', 'rotate', 'brightness', 'saturate']) {
@@ -344,7 +364,7 @@ function reducePrecision(values) {
     for (var precision = 5; precision >2; precision--) {
       const approxValues = {...resultValues};
       approxValues[field] = Number(resultValues[field].toPrecision(precision));
-      if (getColor(approxValues).toHex() === startingHex) {
+      if (getColor(approxValues, roundEveryStep).toHex() === startingHex) {
         resultValues = approxValues;
       } else {
         break;
@@ -408,15 +428,16 @@ function getInitialValuesSBH(target) {
  */
 function go() {
   const target = new Color(...hexToRgb(document.getElementById('rgb').value));
+  const roundEveryStep = document.getElementById('roundeverystep').value == 'y' ? true : false;
 
   document.getElementById('patch1').style.backgroundColor = target.toHex();
   document.getElementById('original').innerHTML = target.toHex();
 
   const values1 = getInitialValuesHBS(target);
-  const result1 = optimise(target, values1);
+  const result1 = optimise(target, values1, roundEveryStep);
 
   const values2 = getInitialValuesSBH(target);
-  const result2 = optimise(target, values2);
+  const result2 = optimise(target, values2, roundEveryStep);
   
   let result;
   if (score(target, result1) < score(target, result2)) {
@@ -428,7 +449,7 @@ function go() {
   }
   
   // Make the values less precise if we can do that and still get the right number.
-  const finalValues = reducePrecision(result);
+  const finalValues = reducePrecision(result, roundEveryStep);
   updateDisplay(finalValues);  
 }
 
@@ -438,6 +459,10 @@ function go() {
 body {
   font-family: sans-serif;
 }
+.form {
+display: flex;
+gap: 20px;
+}
 .form, .result {
 background: #eee;
 padding: 10px;
@@ -445,6 +470,10 @@ margin: 10px 0;
 }
 h1 {
   font-size: 1.4rem;
+  font-weight: normal;
+}
+h2 {
+  font-size: 1.2rem;
   font-weight: normal;
 }
 .original {
@@ -459,11 +488,19 @@ margin-top: 4px;
 <body onload="go()">
 <h1>Convert colour to CSS filter</h1>
 <p>If you have icons in black (or some other colour) and you want to change them to a different colour in CSS, you can use the <tt>filter</tt> property. This script calculates the filter value for any desired colour.</p>
+
 <p><a href="https://github.com/sammarshallou/css-colour-filters/">GitHub link (for credits etc.)</a></p>
 <div class="form">
 <label>
 Hex colour: 
 <input type="text" id="rgb" value="#1f55a5">
+</label>
+<label>
+Optimise for
+<select id="roundeverystep">
+<option value="n" selected">Chrome or unknown (default)</option>
+<option value="y">Firefox</option>
+</select>
 </label>
 <button onclick="go()">Convert</button>
 </div>
@@ -483,10 +520,16 @@ To convert an image of any other colour to this colour you can use:
 
 </div>
 
-<p>These filters are usually accurate to within ±1 R, ±1, G, ±1 B of the intended value. Sometimes they can be slightly less accurate in Firefox because of differences in filter calculations. (I think the difference may be that Firefox rounds colours to whole values before applying the next filter in the chain and Chrome does not.) It might be possible to get more consistent behaviour by changing the optimisation logic.</p>
+<p>These filters are usually accurate to within ±1 R, ±1, G, ±1 B of the intended value. Sometimes they are less accurate in Firefox because of differences in filter calculations. (Firefox rounds colours to whole values before applying the next filter in the chain, and Chrome does not.) If you want, you can try optimising for Firefox using the dropdown, but in my experiments this didn't improve performance much.</p>
 
 <p><a href="firefoxtest.html">Test of filter behaviour</a></p>
 
+<h2>Credits</h2>
+
+<ul>
+<li>Original code: Barrett Sonntag (CodePen version), Angel Rodríguez (GitHub)</li>
+<li>New solver on this page: Sam Marshall, The Open University</li>
+<ul>
 
 </body>
 </html>
