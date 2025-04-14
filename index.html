@@ -222,7 +222,7 @@ const invertAmount = 0.641849;
  */
 function getColor(values) {
    const result = new Color(0, 0, 0);
-    result.invert(invertAmount);
+    result.invert(values.invert ? values.invert : invertAmount);
     result.sepia(1);
     result.hueRotate(values.rotate);
     result.brightness(values.brightness);
@@ -326,29 +326,32 @@ function optimise(target, values) {
 }
 
 function updateDisplay(values) {
-  const filter = 'invert(' + invertAmount + ') sepia(1) hue-rotate(' + values.rotate + 'deg) brightness(' + values.brightness + ') saturate(' + values.saturate + ')';
+  const thisInvertAmount = values.invert ? values.invert : invertAmount;
+  const filter = 'invert(' + thisInvertAmount + ') sepia(1) hue-rotate(' + values.rotate + 'deg) brightness(' + values.brightness + ') saturate(' + values.saturate + ')';
   document.getElementById('patch2').style.filter = filter;
   document.getElementById('filter').innerHTML = 'filter: ' + filter;
+  document.getElementById('filterfromany').innerHTML = 'filter: brightness(0) ' + filter;
   document.getElementById('filtered').innerHTML = getColor(values).toHex();
 
 }
 
 function reducePrecision(values) {
   const startingHex = getColor(values).toHex();
-  // Make the values less precise if we can do that and still get the right number.
-  for (var precision = 5; precision >2; precision--) {
-    const approxValues = {
-      rotate: Number(values.rotate.toPrecision(precision)),
-      brightness: Number(values.brightness.toPrecision(precision)),
-      saturate: Number(values.saturate.toPrecision(precision))
-    };
-    if (getColor(approxValues).toHex() === startingHex) {
-      values = approxValues;
-    } else {
-      break;
+  let resultValues = {invert: invertAmount, ...values};
+  
+  for (let field of ['invert', 'rotate', 'brightness', 'saturate']) {
+    // Make the field less precise if we can do that and still get the right number.
+    for (var precision = 5; precision >2; precision--) {
+      const approxValues = {...resultValues};
+      approxValues[field] = Number(resultValues[field].toPrecision(precision));
+      if (getColor(approxValues).toHex() === startingHex) {
+        resultValues = approxValues;
+      } else {
+        break;
+      }
     }
   }
-  return values;
+  return resultValues;
 }
 
 function getInitialValuesHBS(target) {
@@ -431,9 +434,33 @@ function go() {
 
 </script>
 </head>
-<body>
+<style>
+body {
+  font-family: sans-serif;
+}
+.form, .result {
+background: #eee;
+padding: 10px;
+margin: 10px 0;
+}
+h1 {
+  font-size: 1.4rem;
+  font-weight: normal;
+}
+.original {
+margin-bottom: 4px;
+}
+.filtered {
+margin-top: 4px;
+}
+
+</style>
+
+<body onload="go()">
 <h1>Convert colour to CSS filter</h1>
-<div>
+<p>If you have icons in black (or some other colour) and you want to change them to a different colour in CSS, you can use the <tt>filter</tt> property. This script calculates the filter value for any desired colour.</p>
+<p><a href="https://github.com/sammarshallou/css-colour-filters/">GitHub link (for credits etc.)</a></p>
+<div class="form">
 <label>
 Hex colour: 
 <input type="text" id="rgb" value="#1f55a5">
@@ -441,13 +468,25 @@ Hex colour:
 <button onclick="go()">Convert</button>
 </div>
 
-<div>Original colour <span id="original"></span></div>
+<div class="original">Original colour <span id="original"></span></div>
 <div style="width:200px; height:50px; background-color: black;" id="patch1"></div>
 <div style="width:200px; height:50px; background-color: black;" id="patch2"></div>
-<div>Filtered colour <span id="filtered"></span></div>
-<div id="filter"></div>
+<div class="filtered">Filtered colour <span id="filtered"></span></div>
+<div class="result">
+To convert a black image to this colour you can use:
 
-<p>Note that these filters are slightly off in Firefox. I think this may be because Firefox sepia filter has an error in calculation, but I am not sure yet.</p>
+<pre id="filter"></pre>
+
+To convert an image of any other colour to this colour you can use:
+
+<pre id="filterfromany"></pre>
+
+</div>
+
+<p>These filters are usually accurate to within ±1 R, ±1, G, ±1 B of the intended value. Sometimes they can be slightly less accurate in Firefox because of differences in filter calculations. (I think the difference may be that Firefox rounds colours to whole values before applying the next filter in the chain and Chrome does not.) It might be possible to get more consistent behaviour by changing the optimisation logic.</p>
+
+<p><a href="firefoxtest.html">Test of filter behaviour</a></p>
+
 
 </body>
 </html>
